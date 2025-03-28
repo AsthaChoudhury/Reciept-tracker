@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Table,
   TableBody,
@@ -9,6 +9,14 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -26,10 +34,14 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { format } from "date-fns";
 import { categoryColors } from "@/data/category";
-import { Badge, ChevronDown, ChevronUp, Clock, MoreHorizontal, RefreshCw, Search } from "lucide-react";
+import { Badge, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Clock, MoreHorizontal, RefreshCw, Search, Trash, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { usePathname, useSearchParams } from 'next/navigation';
 import { Input } from "@/components/ui/input";
+import { bulkDeleteTransactions } from "@/actions/account";
+import { toast } from "sonner";
+import { BarLoader } from "react-spinners";
+import useFetch from "@/hooks/use-fetch";
 const RECURRING_INTERVALS = {
   DAILY: "Daily",
   WEEKLY: "Weekly",
@@ -60,15 +72,75 @@ const TransactionTable = ({ transactions }) => {
   const [typeFilter, setTypeFilter] = useState("");
   const [recurringFilter, setRecurringFilter] = useState("");
 
+  const {
+    loading: deleteLoading,
+    fn: deleteFn,
+    data: deleted,
+  } = useFetch(bulkDeleteTransactions);
+
+  
+
 
   const pathname = usePathname();
 const searchParams = useSearchParams();
+
+const handlePageChange = (newPage) => {
+  setCurrentPage(newPage);
+  setselectedids([]); 
+};
+const filteredAndSortedTransactions = useMemo(() => {
+  let result = [...transactions];
+
+  if (searchTerm) {
+    const searchLower = searchTerm.toLowerCase();
+    result = result.filter((transaction) =>
+      transaction.description?.toLowerCase().includes(searchLower)
+    );
+  }
+
+  // type filter
+  if (typeFilter) {
+    result = result.filter((transaction) => transaction.type === typeFilter);
+  }
+
+  // recurring filter
+  if (recurringFilter) {
+    result = result.filter((transaction) => {
+      if (recurringFilter === "recurring") return transaction.isRecurring;
+      return !transaction.isRecurring;
+    });
+  }
+
+  // sorting
+  result.sort((a, b) => {
+    let comparison = 0;
+
+    switch (sortConfig.field) {
+      case "date":
+        comparison = new Date(a.date) - new Date(b.date);
+        break;
+      case "amount":
+        comparison = a.amount - b.amount;
+        break;
+      case "category":
+        comparison = a.category.localeCompare(b.category);
+        break;
+      default:
+        comparison = 0;
+    }
+
+    return sortConfig.direction === "asc" ? comparison : -comparison;
+  });
+
+  return result;
+}, [transactions, searchTerm, typeFilter, recurringFilter, sortConfig]);
+
 
 const handleEditClick = (id) => {
   window.location.href = `/transaction/create?edit=${id}`;
 };
   // const router = useRouter();
-  const filteredAndSortedTransactions = transactions || [];
+
 
   const handleSort = (field) => {
     setSortConfig((current) => ({
@@ -76,6 +148,10 @@ const handleEditClick = (id) => {
       direction: current.field === field  && current.direction ==="asc"?  "desc" : "asc",
     }))
   };
+
+  const totalPages = Math.ceil(
+    filteredAndSortedTransactions.length / ITEMS_PER_PAGE
+  );
 
   const paginatedTransactions = useMemo(() => {
     const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
@@ -101,12 +177,85 @@ const handleEditClick = (id) => {
     );
   };
 
+  const handleBulkDelete = async() => {
+    if(
+      !window.confirm(
+        `Are you sure you want to delete ${selectedids.length} transactions?`
+      )
+    )
+    return
+    deleteFn(selectedids)
+  };
+
+  useEffect(()=> {
+    if(deleted && !deleteLoading){
+      toast.error("TRansactions deleted successfully")
+
+    }
+  },[deleted,deleteLoading])
+
+  const handleClearFilter = () => {
+    console.log(typeof searchTerm); 
+    setSearchTerm("");
+    setTypeFilter("");
+    setRecurringFilter("");
+    setselectedids([]);
+  };
+
   return (
     <div className="space-y-4">
+      {
+        deleteLoading && (
+          <BarLoader className="mt-4" width={"100%"} color="#9333ea" />
+        )
+      }
       <div className="flex flex-col sm:flex-row gap-4">
         <div className="relative flex-1">
           <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground"/>
-          <Input placeholder="Search" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-8"/>
+          <Input placeholder="Search" value={searchTerm} onChange={(e) => {setSearchTerm(e.target.value); setCurrentPage(1);}} className="pl-8"/>
+        </div>
+
+        <div className="flex gap-2">
+        <Select value={typeFilter}  onValueChange={(value) => {
+              setTypeFilter(value);
+              setCurrentPage(1);
+            }}>
+  <SelectTrigger >
+    <SelectValue placeholder="All Types" />
+  </SelectTrigger>
+  <SelectContent>
+    <SelectItem value="INCOME">Income</SelectItem>
+    <SelectItem value="EXPENSE">Expense</SelectItem>
+  </SelectContent>
+</Select>
+
+<Select value={recurringFilter} onValueChange={(value) => {
+              setRecurringFilter(value);
+              setCurrentPage(1);
+            }}>
+  <SelectTrigger className="w-[140px]">
+    <SelectValue placeholder="All Transactions" />
+  </SelectTrigger>
+  <SelectContent>
+    <SelectItem value="recurring">Recurring Only</SelectItem>
+    <SelectItem value="non-recurring">Non-recurring Only</SelectItem>
+  </SelectContent>
+</Select>
+
+{selectedids.length >0 && (
+  <div className="flex items-center gap-2">
+    <Button variant="destructive" size="sm" onClick={handleBulkDelete}>
+     <Trash className="h-4 w-4 mr-2" />
+      Delete Selected ({selectedids.length})</Button>
+    </div>
+)}
+
+{( searchTerm || typeFilter || recurringFilter) && (
+  <Button variant="outline" size="icon" onClick={handleClearFilter}>
+    <X className="h-4 w-5" />
+  </Button>
+)}
+
         </div>
       </div>
     <div className="rounded-md border">
@@ -114,7 +263,8 @@ const handleEditClick = (id) => {
         <TableHeader>
           <TableRow>
             <TableHead className="w-[50px]">
-              <Checkbox />
+              <Checkbox onCheckedChange={handleSelectAll}
+              checked={selectedids.length === paginatedTransactions.length && paginatedTransactions.length>0} />
             </TableHead>
             <TableHead
               className="cursor-pointer"
@@ -153,14 +303,14 @@ const handleEditClick = (id) => {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {filteredAndSortedTransactions.length === 0 ? (
+          {paginatedTransactions.length === 0 ? (
             <TableRow>
               <TableCell colSpan={7} className="text-center text-muted-foreground">
                 No transactions found
               </TableCell>
             </TableRow>
           ) : (
-            filteredAndSortedTransactions.map((transaction) => (
+            paginatedTransactions.map((transaction) => (
               <TableRow key={transaction.id}>
                 <TableCell>
                   <Checkbox onCheckedChange={()=> handleSelect(transaction.id)}
@@ -265,6 +415,21 @@ const handleEditClick = (id) => {
         </TableBody>
       </Table>
     </div>
+    {totalPages > 1 &&
+    (
+      <div className="flex items-center justify-center gap-2">
+        <Button variant="outline" size="icon" onClick={() => handlePageChange(currentPage-1)} disabled={currentPage === 1}>
+          <ChevronLeft className="h-4 w-4" />
+        </Button>
+        <span className="text-sm">
+          Page {currentPage} of {totalPages}
+        </span>
+        <Button variant="outline" size="icon" onClick={() => handlePageChange(currentPage+1)} disabled={currentPage === totalPages}>
+          <ChevronRight className="h-4 w-4" />
+        </Button>
+        
+      </div>
+    )}
     </div>
   );
 };

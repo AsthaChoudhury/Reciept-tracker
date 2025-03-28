@@ -97,7 +97,7 @@ model Transaction {
 model Budget {
   id            String    @id @default(uuid())
   amount        Decimal
-  category      String
+  category      String?
   lastAlertSent DateTime?
   userId        String    @unique
   user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
