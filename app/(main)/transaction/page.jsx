@@ -1,17 +1,9 @@
 import { getUserAccount } from '@/actions/dashboard'
 import { defaultCategories } from '@/data/category';
 import React from 'react'
-import AddTransactionForm from '../_components/transaction-form';
-import { auth } from '@clerk/nextjs/server';
-import { redirect } from 'next/navigation';
-
+import AddTransactionForm from './_components/transaction-form';
 const AddTransactionPage = async() => {
-  const { userId } = auth();
-
-  if (!userId) {
-    // Redirect to your sign-in page or another appropriate route
-    redirect('/sign-in'); // Assuming you have a /sign-in route
-  }
+  
     const accounts = await getUserAccount();
 
   return (
