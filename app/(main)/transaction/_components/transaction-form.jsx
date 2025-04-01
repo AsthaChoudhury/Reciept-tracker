@@ -1,9 +1,9 @@
 "use client";
 
-import { createTransaction } from "@/actions/transaction";
+import { createTransaction, updateTransaction } from "@/actions/transaction";
 import { transactionSchema } from "@/lib/schema";
 import { zodResolver } from "@hookform/resolvers/zod";
-import React from "react";
+import React, { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import {
   Select,
@@ -27,6 +27,9 @@ import { Calendar1Icon, CalendarIcon, Loader2 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { ReceiptScanner } from "./receipt-scanner";
 import { Calendar } from "@/components/ui/calendar";
+import { useSearchParams } from "next/navigation";
+import { toast } from "sonner";
+
 
 const AddTransactionForm = ({
   accounts,
@@ -34,8 +37,9 @@ const AddTransactionForm = ({
   editMode = false,
   initialData = null,
 }) => {
+  const searchParams = useSearchParams();
+  const editId = searchParams.get("edit");
 
-  
   const {
     register,
     setValue,
@@ -76,9 +80,11 @@ const AddTransactionForm = ({
   const {
     loading: transactionLoading,
     fn: transactionFn,
-  } = useFetch(createTransaction);
+    data: transactionResult,
+  } = useFetch(editMode ? updateTransaction : createTransaction);
 
   const onSubmit = async (data) => {
+    console.log("Raw Form Data:", data); // Debug raw data
     const formData = {
       type: data.type,
       amount: parseFloat(data.amount),
@@ -88,9 +94,10 @@ const AddTransactionForm = ({
       category: data.category,
       status: data.status || "COMPLETED",
       isRecurring: data.isRecurring,
-      nextRecurringDate: data.isRecurring && data.nextRecurringDate instanceof Date
-        ? data.nextRecurringDate.toISOString()
-        : null,
+      nextRecurringDate:
+        data.isRecurring && data.nextRecurringDate instanceof Date
+          ? data.nextRecurringDate.toISOString()
+          : null,
       recurringInterval: data.isRecurring ? data.recurringInterval : null,
     };
 
@@ -105,15 +112,33 @@ const AddTransactionForm = ({
       }
       console.log("Transaction Response:", response);
     } catch (error) {
-      console.error("Error creating transaction:", error.message);
+      console.error("Error processing transaction:", error.message);
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
     }
   };
+
+  useEffect(() => {
+    if (transactionResult?.success && !transactionLoading) {
+      toast({
+        title: "Success",
+        description: editMode
+          ? "Transaction updated successfully"
+          : "Transaction created successfully",
+      });
+      // Use window.location.href instead of router.push
+      window.location.href = `/account/${transactionResult.data.accountId}`;
+    }
+  }, [transactionResult, transactionLoading, editMode]);
 
   const handleScanComplete = (scannedData) => {
     console.log("Scanned Data:", scannedData);
     if (scannedData) {
       setValue("amount", scannedData.amount ? scannedData.amount.toString() : "");
-      setValue("date", scannedData.date ? new Date(scannedData.date) : null);
+      setValue("date", scannedData.date ? new Date(scannedData.date) : new Date()); // Fallback to now
       setValue("description", scannedData.description || "No description");
       setValue("category", scannedData.category || "other-expense");
       setValue("isRecurring", scannedData.isRecurring || false);
@@ -126,9 +151,9 @@ const AddTransactionForm = ({
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-      <ReceiptScanner onScanComplete={handleScanComplete} />
+      {!editMode && <ReceiptScanner onScanComplete={handleScanComplete} />}
 
-      <div className="space-y-2">
+      <div className="space-y-2"> 
         <label className="text-sm font-medium">Type</label>
         <Select onValueChange={(value) => setValue("type", value)} defaultValue={type}>
           <SelectTrigger>

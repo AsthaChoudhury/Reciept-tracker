@@ -6,6 +6,7 @@ import { auth } from "@clerk/nextjs/server";
 import { request } from "@arcjet/next";
 import { revalidatePath } from "next/cache";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { userInfo } from "os";
 
 const genAi = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const serializeAmount = (obj) => ({
@@ -194,6 +195,116 @@ export async function scanReceipt(file) {
     }
   } catch (error) {
     console.error("Transaction creation error:", error);
+    throw new Error(error.message);
+  }
+}
+
+export async function getTransaction(id) {
+  const { userId } = await auth();
+  if (!userId) throw new Error("Unauthorized");
+
+  const user = await db.user.findUnique({
+    where: { clerkUserId: userId },
+  });
+
+  if (!user) throw new Error("User not found");
+
+  const transaction = await db.transaction.findUnique({
+    where: {
+      id,
+      userId: user.nextRecurringDate,
+    },
+  });
+
+  if (!transaction) throw new Error("Transaction not found");
+
+  return serializeAmount(transaction);
+}
+
+export async function updateTransaction(id, data) {
+  try {
+    const { userId } = await auth();
+    if (!userId) throw new Error("Unauthorized");
+
+    const user = await db.user.findUnique({
+      where: { clerkUserId: userId },
+    });
+
+    if (!user) throw new Error("User not found");
+
+    const OriginalTransaction = await db.transaction.findUnique({
+      where: {
+        id,
+        userId: user.id,
+      },
+      include: {
+        account: true,
+      },
+    });
+
+    if (!OriginalTransaction) throw new Error("Transaction not found");
+    const oldBalanceChange =
+      OriginalTransaction.type === "EXPENSE"
+        ? -OriginalTransaction.amount.toNumber()
+        : OriginalTransaction.amount.toNumber();
+
+    const newBalance = data.type === "EXPENSE" ? -data.amount : data.amount;
+
+    const netbalanceChange = newBalance - oldBalanceChange;
+
+    const transaction = await db.$transaction(async (tx) => {
+      const updated = await tx.transaction.update({
+        where: {
+          id,
+          userId: user.id,
+        },
+        data: {
+          ...data,
+          nextRecurringDate:
+            data.isRecurring && data.recurringInterval
+              ? calculateNextRecurring(data.date, data.recurringInterval)
+              : null,
+        },
+      });
+
+      await tx.account.update({
+        where: { id: data.accountId },
+        data: {
+          balance: {
+            increment: netbalanceChange,
+          },
+        },
+      });
+      return updated;
+    });
+    revalidatePath("/dashboard");
+    revalidatePath(`/account/${data.accountId}`);
+    return { success: true, data: serializeAmount(transaction) };
+  } catch (error) {
+    throw new Error(error.message);
+  }
+}
+
+export async function getUserTransactions(accountId) {
+  try {
+    const { userId } = await auth();
+    if (!userId) throw new Error("Unauthorized");
+
+    const user = await db.user.findUnique({
+      where: { clerkUserId: userId },
+    });
+    if (!user) throw new Error("User not found");
+
+    const transactions = await db.transaction.findMany({
+      where: {
+        userId: user.id,
+        accountId: accountId,
+      },
+    });
+
+    return transactions.map(serializeAmount);
+  } catch (error) {
+    console.error("Error fetching transactions:", error.message);
     throw new Error(error.message);
   }
 }

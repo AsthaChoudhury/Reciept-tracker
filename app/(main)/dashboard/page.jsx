@@ -6,6 +6,8 @@ import { getUserAccount } from "@/actions/dashboard";
 import {AccountCard} from "./_components/account-card";
 import { getCurrentBudget } from "@/actions/budget";
 import Budgetprogress from "./_components/budget-progress.js";
+import { DashboardOverview } from "./_components/transactions-overview";
+import { getUserTransactions } from "@/actions/transaction";
 async function DashboardPage(){
 
 
@@ -15,10 +17,13 @@ async function DashboardPage(){
     const defaultAccount = accounts?.find((account) => account.isDefault)
 
     let budgetdata = null;
+    let transactions = [];
     if(defaultAccount){
         budgetdata = await getCurrentBudget(defaultAccount.id);
+        transactions = await getUserTransactions(defaultAccount.id)
     }
 
+    console.log(transactions)
     return <div className="space-y-8">
         {/* Budget Process */}
 
@@ -27,6 +32,7 @@ async function DashboardPage(){
             currentExpenses = {budgetdata.currentExpenses || 0}/>
         )}
         {/* Overview */}
+        <DashboardOverview accounts={accounts} transactions={transactions || [] } />
         {/* Account Grid */}
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             <CreateAccountDrawer>

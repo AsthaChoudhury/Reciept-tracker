@@ -137,7 +137,7 @@ const filteredAndSortedTransactions = useMemo(() => {
 
 
 const handleEditClick = (id) => {
-  window.location.href = `/transaction/create?edit=${id}`;
+  window.location.href = `/transaction?edit=${id}`;
 };
   // const router = useRouter();
 
