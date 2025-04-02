@@ -31,12 +31,40 @@ const COLORS = [
   "#9FA8DA",
 ];
 
+const renderCustomizedLabel = ({
+  cx,
+  cy,
+  midAngle,
+  innerRadius,
+  outerRadius,
+  percent,
+  index,
+  name,
+  value,
+}) => {
+  const radius = outerRadius * 1.2; 
+  const x = cx + radius * Math.cos(-midAngle * (Math.PI / 180));
+  const y = cy + radius * Math.sin(-midAngle * (Math.PI / 180));
+
+  // return (
+  //   // <text
+  //   //   x={x}
+  //   //   y={y}
+  //   //   fill="hsl(var(--foreground))"
+  //   //   textAnchor={x > cx ? "start" : "end"}
+  //   //   dominantBaseline="central"
+  //   //   fontSize={12}
+  //   // >
+  //   //   {`${name}: $${value.toFixed(2)}`}
+  //   // </text>
+  // );
+};
+
 export function DashboardOverview({ accounts, transactions }) {
   const [selectedAccountId, setSelectedAccountId] = useState(
     accounts.find((a) => a.isDefault)?.id || accounts[0]?.id
   );
 
-  // Defensive check for transactions
   if (!Array.isArray(transactions)) {
     console.error("Transactions prop is not an array:", transactions);
     return (
@@ -65,22 +93,20 @@ export function DashboardOverview({ accounts, transactions }) {
     );
   }
 
+  console.log("Transactions received:", transactions);
   const accountTransactions = transactions.filter(
     (t) => t.accountId === selectedAccountId
   );
+  console.log("Account Transactions:", accountTransactions);
+
   const recentTransactions = accountTransactions
     .sort((a, b) => new Date(b.date) - new Date(a.date))
     .slice(0, 5);
-  const currentDate = new Date();
-  const currentMonthExpenses = accountTransactions.filter((t) => {
-    const transactionDate = new Date(t.date);
-    return (
-      t.type === "EXPENSE" &&
-      transactionDate.getMonth() === currentDate.getMonth() &&
-      transactionDate.getFullYear() === currentDate.getFullYear()
-    );
-  });
-  const expensesByCategory = currentMonthExpenses.reduce((acc, transaction) => {
+
+  const allExpenses = accountTransactions.filter((t) => t.type === "EXPENSE");
+  console.log("All Expenses:", allExpenses);
+
+  const expensesByCategory = allExpenses.reduce((acc, transaction) => {
     const category = transaction.category;
     if (!acc[category]) {
       acc[category] = 0;
@@ -94,6 +120,7 @@ export function DashboardOverview({ accounts, transactions }) {
       value: amount,
     })
   );
+  console.log("Pie Chart Data:", pieChartData);
 
   return (
     <div className="grid gap-4 md:grid-cols-2">
@@ -165,13 +192,13 @@ export function DashboardOverview({ accounts, transactions }) {
       <Card>
         <CardHeader>
           <CardTitle className="text-base font-normal">
-            Monthly Expense Breakdown
+            Expense Breakdown (All Time)
           </CardTitle>
         </CardHeader>
         <CardContent className="p-0 pb-5">
           {pieChartData.length === 0 ? (
             <p className="text-center text-muted-foreground py-4">
-              No expenses this month
+              No expenses recorded
             </p>
           ) : (
             <div className="h-[300px]">
@@ -184,7 +211,8 @@ export function DashboardOverview({ accounts, transactions }) {
                     outerRadius={80}
                     fill="#8884d8"
                     dataKey="value"
-                    label={({ name, value }) => `${name}: $${value.toFixed(2)}`}
+                    label={renderCustomizedLabel} 
+                    
                   >
                     {pieChartData.map((entry, index) => (
                       <Cell
